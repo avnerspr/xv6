@@ -22,6 +22,7 @@ int flags2perm(int flags)
 int
 exec(char *path, char **argv)
 {
+
   char *s, *last;
   int i, off;
   uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase;
@@ -131,6 +132,7 @@ exec(char *path, char **argv)
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
+ printf("bad\n");
   if(pagetable)
     proc_freepagetable(pagetable, sz);
   if(ip){
