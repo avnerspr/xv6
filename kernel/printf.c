@@ -14,6 +14,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "proc.h"
+#include "stackframe.h"
+
 
 volatile int panicked = 0;
 
@@ -132,4 +134,15 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+
+void backtrace(void){
+  sf_t sf_ptr;
+  sf_ptr = (sf_t) r_s0();
+  uint64 page = PGROUNDDOWN(r_sp());
+  while(PGROUNDDOWN((uint64)sf_ptr) == page){
+    printf("%p\n", RETADDR(sf_ptr));
+    sf_ptr = CALLER_SF(sf_ptr);
+  }
 }
