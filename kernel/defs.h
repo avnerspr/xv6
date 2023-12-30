@@ -173,6 +173,9 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+void            vmprint(pagetable_t);
+int             check_acsessed(pagetable_t pagetable, uint64 va);
+
 
 // plic.c
 void            plicinit(void);
@@ -187,3 +190,15 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+#define BYTEBITSNUM(x) (8 * x)
+
+#define BITSIZE(x) (8 * sizeof(x))
+
+#define BYTEGROUNDDOWN(x) (x / 8)
+
+#define BYTEGROUNDUP(x) ((x + 7) / 8)
+
+#define BIT2BYTE(bit_num, bit_val) (bit_val << bit_num)
+
+#define ORBIT(x, bit_num, bit_val) (x |= BIT2BYTE(bit_num, bit_val))

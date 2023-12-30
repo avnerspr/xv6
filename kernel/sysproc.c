@@ -74,7 +74,33 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 va;
+  int len;
+  uint64 result_uaddr;
+  argaddr(0, &va);
+  argint(1, &len);
+  argaddr(2, &result_uaddr);
+  int page_acsessed;
+  int byte_ctr;
+  if (len > BYTEBITSNUM(PGSIZE))
+      return -1;
+  
+  pagetable_t my_pagetable = myproc()->pagetable;
+  char* res_mask = (char *)kalloc();
+  for (byte_ctr = 0; byte_ctr < BYTEGROUNDUP(len); byte_ctr++)
+      res_mask[byte_ctr] = 0;
+  
+  for (uint64 ctr = 0; ctr < len; ctr++)
+  {
+    if ((page_acsessed = check_acsessed(my_pagetable, va)) < 0){
+      return -1;
+    }
+    ORBIT(res_mask[ctr / 8], ctr % 8, page_acsessed);
+    va += PGSIZE;
+  }
+
+  copyout(my_pagetable, result_uaddr, res_mask, (len + 7)/8);
+  kfree(res_mask);
   return 0;
 }
 #endif
