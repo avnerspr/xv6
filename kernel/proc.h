@@ -18,6 +18,7 @@ struct context {
   uint64 s11;
 };
 
+
 // Per-CPU state.
 struct cpu {
   struct proc *proc;          // The process running on this cpu, or null.
@@ -77,7 +78,48 @@ struct trapframe {
   /* 264 */ uint64 t4;
   /* 272 */ uint64 t5;
   /* 280 */ uint64 t6;
+  /* 288 */ uint64 alarminterval;
+  /* 296 */ uint64 alarmctr;
+}; /* size = 304 */
+
+struct snapshot {
+  /*  0 */ uint64 epc;           // saved user program counter
+  /*  8 */ uint64 kernel_hartid; // saved kernel tp
+  /*  16 */ uint64 ra;
+  /*  24 */ uint64 sp;
+  /*  32 */ uint64 gp;
+  /*  40 */ uint64 tp;
+  /*  48 */ uint64 t0;
+  /*  56 */ uint64 t1;
+  /*  64 */ uint64 t2;
+  /*  72 */ uint64 s0;
+  /*  80 */ uint64 s1;
+  /*  88 */ uint64 a0;
+  /*  96 */ uint64 a1;
+  /* 104 */ uint64 a2;
+  /* 112 */ uint64 a3;
+  /* 120 */ uint64 a4;
+  /* 128 */ uint64 a5;
+  /* 136 */ uint64 a6;
+  /* 144 */ uint64 a7;
+  /* 152 */ uint64 s2;
+  /* 160 */ uint64 s3;
+  /* 168 */ uint64 s4;
+  /* 176 */ uint64 s5;
+  /* 184 */ uint64 s6;
+  /* 192 */ uint64 s7;
+  /* 200 */ uint64 s8;
+  /* 208 */ uint64 s9;
+  /* 216 */ uint64 s10;
+  /* 224 */ uint64 s11;
+  /* 232 */ uint64 t3;
+  /* 240 */ uint64 t4;
+  /* 248 */ uint64 t5;
+  /* 256 */ uint64 t6;  
 };
+
+#define TRAPFRAME2SNAPSHOT(trapframe_ptr) ((struct snapshot *)((char*)trapframe_ptr + 24))
+
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
@@ -101,7 +143,9 @@ struct proc {
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
   struct context context;      // swtch() here to run process
+  struct snapshot * alarm_snapshot;
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
+  uint64 alarmhandler;
   char name[16];               // Process name (debugging)
 };

@@ -160,6 +160,9 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  if (p->alarm_snapshot)
+      kfree(p->alarm_snapshot);
+  p->alarm_snapshot = 0;
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -168,6 +171,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->alarmhandler = 0;
   p->state = UNUSED;
 }
 
@@ -243,13 +247,16 @@ userinit(void)
   p->sz = PGSIZE;
 
   // prepare for the very first "return" from kernel to user.
-  p->trapframe->epc = 0;      // user program counter
-  p->trapframe->sp = PGSIZE;  // user stack pointer
-
+  p->trapframe->epc = 0;            // user program counter
+  p->trapframe->sp = PGSIZE;        // user stack pointer
+  p->trapframe->alarminterval = 0;  // no alarm interval;
+  p->trapframe->alarmctr = 0;       // ctr is 0
+  p->alarm_snapshot = 0;            // no snapshot
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+
 
   release(&p->lock);
 }
@@ -296,6 +303,8 @@ fork(void)
   }
   np->sz = p->sz;
 
+  np->alarmhandler = p->alarmhandler;
+  np->alarm_snapshot = p->alarm_snapshot;
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -680,4 +689,25 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// advance process alarm clock. return 1 if passed interval cycles since last alarm trigger.
+int advance_alarm(struct proc * p){
+  if (p->trapframe->alarminterval == 0)
+      return 0;
+  
+  p->trapframe->alarmctr++;
+  if ((p->trapframe->alarmctr % p->trapframe->alarminterval) == 0)
+      return 1;
+  
+  return 0;
+}
+
+int alarm_trigger(struct proc * p){
+  if (p->alarm_snapshot)
+      return -1;
+  p->alarm_snapshot = kalloc();
+  *(p->alarm_snapshot) = *(TRAPFRAME2SNAPSHOT(p->trapframe));
+  p->trapframe->epc = (uint64)p->alarmhandler;
+  return 0;
 }
