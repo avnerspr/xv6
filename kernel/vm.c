@@ -153,8 +153,9 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V) {
       panic("mappages: remap");
+    }
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -274,7 +275,7 @@ freewalk(pagetable_t pagetable)
   // there are 2^9 = 512 PTEs in a page table.
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
-    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X|PTE_COW)) == 0){
       // this PTE points to a lower-level page table.
       uint64 child = PTE2PA(pte);
       freewalk((pagetable_t)child);
@@ -302,6 +303,8 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+/*
+~original uvmcopy
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
@@ -330,7 +333,56 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+}*/
+
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for(i = 0; i < sz; i += PGSIZE)
+  {
+    if((pte = walk(old, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      panic("uvmcopy: page not present");
+    
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if(mappages(new, i, PGSIZE, pa, W2COW(flags)) != 0)
+        goto err;
+    add_ref((void *)pa); // ^ add ref
+  
+    *pte = W2COW(*pte); 
+  }
+  return 0;
+
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
 }
+
+//& copy on write
+int cow_copy(pagetable_t pagetable, uint64 va, pte_t* pte){
+  va = PGROUNDDOWN(va);
+  char* mem;
+  uint64 old_pa;
+  int flags;
+  if ((mem = kalloc()) == 0)
+      return -1;
+  
+  old_pa = PTE2PA(*pte);
+  flags = COW2W(PTE_FLAGS(*pte));
+  memmove(mem, (char*)old_pa, PGSIZE);
+  uvmunmap(pagetable, va, 1, 1);
+  if ((mappages(pagetable, va, PGSIZE, (uint64)mem, flags)) != 0){
+    kfree((void *)mem);
+    return -1;
+  }
+  return 0;
+}
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -355,12 +407,22 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pte_t * pte = walk(pagetable, va0, 0);
+    pa0 = PTE2PA(*pte);
     if(pa0 == 0)
       return -1;
+    for(int i = PGROUNDDOWN(dstva); i <= PGROUNDDOWN(dstva + len); i += PGSIZE)
+    {
+    if (cow_copy(pagetable, dstva, pte) != 0) {
+      return -1;
+    }
+    }
+
+    pa0 = walkaddr(pagetable, dstva);
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
+    
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;
