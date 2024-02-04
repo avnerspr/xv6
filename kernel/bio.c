@@ -39,6 +39,7 @@ struct {
 struct bucket {
   struct buf head;
   struct spinlock lock;
+  uint index;
 };
 
 struct bucket hashtable[NBUCKET];
@@ -53,13 +54,17 @@ binit(void)
 
   for (buck = hashtable; buck < hashtable+NBUCKET; buck++)
   {
+    
     initlock(&buck->lock, "bcache_bucket");
+    buck->index = buck - hashtable;
     buck->head.prev = &buck->head;
     buck->head.next = &buck->head;
   }
-  // Create linked list of buffers
-  buck = hashtable;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
+  // Create linked list of buffers in each bucket
+  for(uint ctr = 0; ctr < NBUF; ctr++){
+    b = &bcache.buf[ctr];
+    buck = &hashtable[ctr % NBUCKET];
+    b->buckindex = ctr % NBUCKET;
     b->next = buck->head.next;
     b->prev = &buck->head;
     b->refcnt = 0;
@@ -76,63 +81,63 @@ static struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
-  struct bucket * buck = &hashtable[blockno % NBUCKET];
+  struct bucket * blockbuck = &hashtable[blockno % NBUCKET];
 
 
-  acquire(&buck->lock);
+  acquire(&blockbuck->lock);
 
   // Is the block already cached?
-  for(b = buck->head.next; b != &buck->head; b = b->next)
+  for(b = blockbuck->head.next; b != &blockbuck->head; b = b->next)
   {
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
-      release(&buck->lock);
+      release(&blockbuck->lock);
       acquiresleep(&b->lock);
       return b;
     }
   }
+
+  // Cache miss
+  release(&blockbuck->lock);
   struct buf *unused = 0;
-  struct bucket * incbuck = buck;
-  uint unused_bucket_index = 0;
-  release(&incbuck->lock);
-  acquire(&bcache.lock);
+  struct bucket * buck;
   for (buck = hashtable; buck < hashtable+NBUCKET; buck++)
   {
     acquire(&buck->lock);
-    for(b = buck->head.next; b != &buck->head; b = b->next)
-    {
-      if (b->refcnt > 0)
-          continue;
-      if (unused == 0 || b->usedtime < unused->usedtime)
-      {
-          unused = b;
-          unused_bucket_index = buck - hashtable;
-      }
-    }
-    release(&buck->lock);
+  }
+  for(b = bcache.buf; b < bcache.buf+NBUF; b++)
+  {
+    if (b->refcnt > 0)
+        continue;
+    if (unused == 0 || unused->usedtime > b->usedtime)
+        unused = b;
   }
 
   if (unused == 0)
       panic("bget: no buffers");
 
-  acquire(&incbuck->lock);
-  if (&hashtable[unused_bucket_index] != incbuck)
-      acquire(&hashtable[unused_bucket_index].lock);
+  for (buck = hashtable; buck < hashtable+NBUCKET; buck++)
+  {
+    if (buck != blockbuck && buck->index != unused->buckindex) // * Release all buckets locks except the ones we pass a block between
+        release(&buck->lock);
+  }
+
+
   unused->next->prev = unused->prev;
   unused->prev->next = unused->next;
-  unused->next = incbuck->head.next;
-  unused->prev = &incbuck->head;
+  unused->next = blockbuck->head.next;
+  unused->prev = &blockbuck->head;
   unused->prev->next = unused;
   unused->next->prev = unused;
-  if (&hashtable[unused_bucket_index] != incbuck)
-      release(&hashtable[unused_bucket_index].lock);
+  if (unused->buckindex != blockbuck->index)
+      release(&hashtable[unused->buckindex].lock);
   
   unused->dev = dev;
   unused->blockno = blockno;
+  unused->buckindex = blockbuck->index;
   unused->valid = 0;
   unused->refcnt = 1;
-  release(&incbuck->lock);
-  release(&bcache.lock);
+  release(&blockbuck->lock);
   acquiresleep(&unused->lock);
   return unused;
   //  // Not cached.
