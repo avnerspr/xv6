@@ -8,7 +8,7 @@ struct buf {
   struct buf * next;
   struct buf * prev;
   uint unusedtime; // Time of last use
-  uint buckindex;
+  uint bucketindex;
   uchar data[BSIZE];
 };
 
