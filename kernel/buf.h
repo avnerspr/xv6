@@ -7,7 +7,7 @@ struct buf {
   uint refcnt;
   struct buf * next;
   struct buf * prev;
-  uint usedtime; // Time of last use
+  uint unusedtime; // Time of last use
   uint buckindex;
   uchar data[BSIZE];
 };
