@@ -1,0 +1,4 @@
+1) usertrap
+2) p->trapframe->a7 == 7 it is a value of enum that tells the excecuted syscall
+3) normal/user mode
+
