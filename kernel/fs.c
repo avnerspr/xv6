@@ -664,6 +664,21 @@ dirlink(struct inode *dp, char *name, uint inum)
   return 0;
 }
 
+// Symlinks
+
+// follow a symlink to it's pointed path
+struct inode * symlinkfollow(struct inode * slp) {
+  struct symlink sl;
+  if (slp->type != T_SYMLINK)
+      panic("symlinkfollow not SYMLINK");
+  
+  if (readi(slp, 0, (uint64)&sl, 0, sizeof(sl)) != sizeof(sl))
+      panic("symlinkfollow read");
+  
+  return namei(sl.path);
+
+}
+
 // Paths
 
 // Copy the next path element from path into name.
@@ -719,7 +734,7 @@ namex(char *path, int nameiparent, char *name)
 
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
-    if(ip->type != T_DIR){
+    if(ip->type != T_DIR && ip->type){
       iunlockput(ip);
       return 0;
     }
@@ -728,9 +743,12 @@ namex(char *path, int nameiparent, char *name)
       iunlock(ip);
       return ip;
     }
-    if((next = dirlookup(ip, name, 0)) == 0){
-      iunlockput(ip);
-      return 0;
+    if (ip->type == T_DIR)
+    {
+      if((next = dirlookup(ip, name, 0)) == 0){
+        iunlockput(ip);
+        return 0;
+      }
     }
     iunlockput(ip);
     ip = next;

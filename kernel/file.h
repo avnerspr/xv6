@@ -38,3 +38,7 @@ struct devsw {
 extern struct devsw devsw[];
 
 #define CONSOLE 1
+
+struct symlink {
+  char path[128];
+};

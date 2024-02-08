@@ -242,12 +242,11 @@ bad:
   return -1;
 }
 
-static struct inode*
+static struct inode* 
 create(char *path, short type, short major, short minor)
 {
   struct inode *ip, *dp;
   char name[DIRSIZ];
-
   if((dp = nameiparent(path, name)) == 0)
     return 0;
 
@@ -307,8 +306,9 @@ sys_open(void)
   char path[MAXPATH];
   int fd, omode;
   struct file *f;
-  struct inode *ip;
+  struct inode *ip, *newip;
   int n;
+  uint ctr = 0;
 
   argint(1, &omode);
   if((n = argstr(0, path, MAXPATH)) < 0)
@@ -327,7 +327,27 @@ sys_open(void)
       end_op();
       return -1;
     }
+    
     ilock(ip);
+    while (ip->type == T_SYMLINK && (!(omode & O_NOFOLLOW)) && ctr < MAXSYMLINKCHAIN)
+    {
+      newip = symlinkfollow(ip);
+      iunlockput(ip);
+      ip = newip;
+      if (ip == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      ctr++;
+    }
+
+    if (ctr > 0 && (ip->type == T_SYMLINK || ip->type == T_DIR)) { // & original path was symlink 
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -340,6 +360,7 @@ sys_open(void)
     end_op();
     return -1;
   }
+
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -502,4 +523,54 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+uint64 sys_symlink(void) {
+  char target[MAXPATH]; 
+  char path[MAXPATH];
+  struct inode *slp;
+  struct symlink symlink;
+  uint64 res;
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+      return -1;
+  
+  strncpy(symlink.path, target, MAXPATH);
+
+  begin_op();
+  if((slp = create(path, T_SYMLINK, FD_DEVICE, FD_DEVICE)) == 0)
+  {
+    end_op();
+    return -1;
+  }
+
+  // if((ip = namei(target)) == 0)
+  // {
+  //   symlink.dev = 0;
+  //   symlink.inum = 0;
+  //   ilock(slp);
+  //   if (writei(slp, 0, (uint64)&symlink, 0, sizeof(symlink)) != sizeof(symlink))
+  //       res = -1;
+  //   res = 0;
+  //   iunlockput(slp);
+  //   end_op();
+  //   return res;
+  // }
+
+  // // ilock(ip);
+  // // ip->nlink++;
+  // // iupdate(ip);
+  // // iunlock(ip);
+  
+
+  // ilock(ip);
+  // symlink.dev = ip->dev;
+  // symlink.inum = ip->inum;
+  // iunlock(ip);
+
+  if (writei(slp, 0, (uint64)&symlink, 0, sizeof(symlink)) != sizeof(symlink))
+      res = -1;
+  res = 0;
+  iunlockput(slp);
+  end_op();
+  return res;
 }
