@@ -413,9 +413,11 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       return -1;
     for(int i = PGROUNDDOWN(dstva); i <= PGROUNDDOWN(dstva + len); i += PGSIZE)
     {
+    printf("enter cow copy\n");
     if (cow_copy(pagetable, dstva, pte) != 0) {
       return -1;
     }
+    printf("finnish cow copy\n");
     }
 
     pa0 = walkaddr(pagetable, dstva);

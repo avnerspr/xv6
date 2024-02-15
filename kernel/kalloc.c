@@ -22,11 +22,12 @@ struct reference_ctr {
   uint64 start_ph;
   uint64 legnth;
   char*  ctrs_array;
+  struct spinlock lock;
 };
 
-static struct reference_ctr pages_refcount = {.legnth = 0, .start_ph = 0, .ctrs_array = 0};
+struct reference_ctr pages_refcount;
 
-#define PA2PAGEREF(pa) (pages_refcount.ctrs_array[((uint64)pa - pages_refcount.start_ph) / PGSIZE])
+#define PA2PAGEREF(pa) (pages_refcount.ctrs_array[((uint64)(pa) - pages_refcount.start_ph) / PGSIZE])
 
 struct run {
   struct run *next;
@@ -50,6 +51,7 @@ void ref_array_init(uint64 start, uint64 final){
   printf("starting ref_array_init\n");
   pages_refcount.start_ph = PGROUNDUP(start);
   pages_refcount.legnth = (PGROUNDDOWN(final) - pages_refcount.start_ph) / PGSIZE;
+  initlock(&pages_refcount.lock, "pages_refcount");
   for (uint64 i = 0; i < PGROUNDUP(pages_refcount.legnth) / PGSIZE; i++){
       pages_refcount.ctrs_array = (char *)unref_kalloc();  //& the pages get kalloced by order from ones with large pa to small. we inverse the order.
       memset(pages_refcount.ctrs_array, 1, PGSIZE);   //& init everithing to be ready for first kalloc  
@@ -99,12 +101,16 @@ void kfree(void * pa){
           
           panic("kfree");
       }
-  
-  char ref_ctr = --PA2PAGEREF(pa);
-  if (ref_ctr >= NPROC)
+  acquire(&pages_refcount.lock);
+  PA2PAGEREF(pa)--;
+  uchar ref_ctr = PA2PAGEREF(pa);
+  release(&pages_refcount.lock);
+  if (ref_ctr > NPROC)
       panic("kfree");
   if (ref_ctr > 0 && ref_ctr)
+  {
       return;
+  }
   PA2PAGEREF(pa) = 1;
   memset(pa, 3, PGSIZE);
   struct run *r = (struct run *)pa;
@@ -157,6 +163,7 @@ void add_ref(void * pa){
     if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP || \
         PA2PAGEREF(pa) >= NPROC || PA2PAGEREF(pa) == 0)
             panic("add_ref");
-  
+  acquire(&pages_refcount.lock);
   PA2PAGEREF(pa)++;  
+  release(&pages_refcount.lock);
 }
