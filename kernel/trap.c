@@ -37,7 +37,6 @@ void
 usertrap(void)
 {
   int which_dev = 0;
-
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
@@ -65,27 +64,34 @@ usertrap(void)
     intr_on();
 
     syscall();
+    goto no_usertrap;
   } else if((which_dev = devintr()) != 0){
+    goto no_usertrap;
     // ok
   } else if (r_scause() == 15) { 
     // page fault when tring to write
     uint64 faultva = r_stval();
+    if (faultva >= MAXVA)
+      goto usertrap;
     pte_t * pte;
     if ((pte = walk(p->pagetable, faultva, 0)) == 0){
-        // TODO: ADD handle error
+        goto usertrap;
     }
     if ((*pte & PTE_COW) == 0){
-        // TODO: ADD handle error
+        goto usertrap;
     }
     if (cow_copy(p->pagetable, PGROUNDDOWN(faultva), pte) != 0){
-        // TODO: ADD handle error
+        goto usertrap;
     }
+    goto no_usertrap;
   }
-  else {
+
+usertrap:
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
-  }
+
+no_usertrap:
 
   if(killed(p))
     exit(-1);

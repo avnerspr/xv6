@@ -404,20 +404,25 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pte_t * pte = walk(pagetable, va0, 0);
-    pa0 = PTE2PA(*pte);
-    if(pa0 == 0)
+    pa0 = walkaddr(pagetable, va0);
+    if (pa0 == 0)
       return -1;
-    for(int i = PGROUNDDOWN(dstva); i <= PGROUNDDOWN(dstva + len); i += PGSIZE)
-    {
-    printf("enter cow copy\n");
-    if (cow_copy(pagetable, dstva, pte) != 0) {
+
+    pte_t * pte = walk(pagetable, va0, 0);
+    if (pte == 0)
+      return -1;
+    if (pa0 != PTE2PA(*pte))
+      panic("copyout");
+    if(pa0 == 0) {
       return -1;
     }
-    printf("finnish cow copy\n");
+    for (int i = PGROUNDDOWN(dstva); i <= PGROUNDDOWN(dstva + len); i += PGSIZE)
+    {
+      if (cow_copy(pagetable, dstva, pte) != 0) {
+        return -1;
+      }
     }
 
     pa0 = walkaddr(pagetable, dstva);

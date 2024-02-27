@@ -41,14 +41,12 @@ struct {
 void
 kinit()
 {
-  printf("start kinit\n");
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
   ref_array_init((uint64)end, (uint64)PHYSTOP);
 }
 
 void ref_array_init(uint64 start, uint64 final){
-  printf("starting ref_array_init\n");
   pages_refcount.start_ph = PGROUNDUP(start);
   pages_refcount.legnth = (PGROUNDDOWN(final) - pages_refcount.start_ph) / PGSIZE;
   initlock(&pages_refcount.lock, "pages_refcount");
@@ -56,13 +54,11 @@ void ref_array_init(uint64 start, uint64 final){
       pages_refcount.ctrs_array = (char *)unref_kalloc();  //& the pages get kalloced by order from ones with large pa to small. we inverse the order.
       memset(pages_refcount.ctrs_array, 1, PGSIZE);   //& init everithing to be ready for first kalloc  
   }
-  printf("finished ref_array_init\n");
 }
 
 void
 freerange(void *pa_start, void *pa_end)
 {
-  printf ("start freerange\n");
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
